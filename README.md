@@ -1,4 +1,4 @@
-# 🎙️ Voice to MIDI
+# 🎙️ V2M - Voice to MIDI
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-orange.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -10,13 +10,20 @@ Convert your voice into MIDI notes in real-time — export to GarageBand, Logic,
 ![preview](https://github.com/user-attachments/assets/e065df11-ea03-4d47-ba8a-88d9147323e6)
 
 ---
+> [!IMPORTANT] 
+> ## Requirements
+>
+> - **Python 3.8 or higher**  
+>  Download from https://www.python.org/downloads/
+> - **A microphone** (built-in or USB)
+> - **Optional:** NVIDIA GPU with CUDA for faster pitch detection
 
-## Requirements
+---
+> [!NOTE]
+> Getting reliable wireless or wired communication working smoothly between iOS devices and Linux or Windows machines turned out to be a lot more complicated and time-consuming than I expected.
+> To keep development manageable and make sure the program actually works consistently across different operating systems and platforms, I’ve decided to focus the app on recording audio locally on the device and saving the result straight to MIDI files only.
+> This approach avoids all the cross-platform communication headaches and lets me get a solid, usable version out much faster.
 
-- **Python 3.8 or higher**  
-  Download from https://www.python.org/downloads/
-- **A microphone** (built-in or USB)
-- **Optional:** NVIDIA GPU with CUDA for faster pitch detection
 
 ---
 
@@ -72,39 +79,41 @@ When `python-rtmidi` is installed, the app creates a virtual MIDI port called `V
 
 ---
 
-## Tips for Best Results
-
-1. **Sing clearly** with consistent pitch — the detector needs ~80ms of stability
-2. **Quiet environment** reduces false triggers
-3. **Adjust Sensitivity** slider: lower for noisy rooms, higher for quiet recording
-4. For **Bass mode**, sing low "oooh" or "mmm" sounds
-5. For **Drums mode**, use your mouth for "boom" (kick), "pssh" (snare), "tss" (hi-hat)
+> [!TIP] 
+> For Best Results:
+>
+> 1. **Sing clearly** with consistent pitch — the detector needs ~80ms of stability
+> 2. **Quiet environment** reduces false triggers
+> 3. **Adjust Sensitivity** slider: lower for noisy rooms, higher for quiet recording
+> 4. For **Bass mode**, sing low "oooh" or "mmm" sounds
+> 5. For **Drums mode**, use your mouth for "boom" (kick), "pssh" (snare), "tss" (hi-hat)
 
 ---
 
-## Troubleshooting
-
-**No sound detected**
-- Check your microphone permissions in System Settings
-- Try selecting a different input device from the dropdown
-
-**Laggy pitch detection**
-- Use `small` model capacity (default) — `full` is more accurate but 4× slower
-- If on CPU-only, the first few notes may have higher latency while the model warms up
-
-**MIDI not reaching GarageBand**
-- Make sure `python-rtmidi` installed successfully (check terminal output)
-- On macOS, enable the IAC Driver: Audio MIDI Setup → MIDI Studio → IAC Driver → Device is online
-
-**`portaudio` error on Linux**
-```bash
-sudo apt-get install portaudio19-dev
-```
-
-**`python-rtmidi` build fails on Linux**
-```bash
-sudo apt-get install libasound2-dev libjack-jackd2-dev
-```
+> [!NOTE]  
+> ## Troubleshooting
+>
+> **No sound detected**
+> - Check your microphone permissions in System Settings
+> - Try selecting a different input device from the dropdown
+> 
+> **Laggy pitch detection**
+> - Use `small` model capacity (default) — `full` is more accurate but 4× slower
+> - If on CPU-only, the first few notes may have higher latency while the model warms up
+>
+> **MIDI not reaching GarageBand**
+> - Make sure `python-rtmidi` installed successfully (check terminal output)
+> - On macOS, enable the IAC Driver: Audio MIDI Setup → MIDI Studio → IAC Driver → Device is online
+> 
+> **`portaudio` error on Linux**
+>  ```bash
+> sudo apt-get install portaudio19-dev
+> ```
+> 
+> **`python-rtmidi` build fails on Linux**
+> ```bash
+> sudo apt-get install libasound2-dev libjack-jackd2-dev
+> ```
 
 ---
 
@@ -125,10 +134,11 @@ voice_to_midi/
 
 ## 🛣️ Roadmap
 
-- [ ] Pitch Correction
-- [ ] Waveform Visualizer
-- [ ] Chord Detection (maybe?)
-- [ ] Scale/Key Quantization
+- [x] Pitch Correction
+- [x] Waveform Visualizer
+- [x] Chord Detection
+- [x] Scale/Key Quantization
+- [ ] Extras
 
 ---
 
