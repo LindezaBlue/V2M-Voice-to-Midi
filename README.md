@@ -1,6 +1,13 @@
 # 🎙️ Voice to MIDI
 
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-orange.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-brightgreen.svg)](https://www.kernel.org/)
+
 Convert your voice into MIDI notes in real-time — export to GarageBand, Logic, Ableton, and more.
+
+![preview](https://github.com/user-attachments/assets/e065df11-ea03-4d47-ba8a-88d9147323e6)
 
 ---
 
@@ -113,3 +120,49 @@ voice_to_midi/
 ├── run.bat               # Windows launcher
 └── README.md
 ```
+
+---
+
+## 🛣️ Roadmap
+
+- [ ] Pitch Correction
+- [ ] Waveform Visualizer
+- [ ] Chord Detection (maybe?)
+- [ ] Scale/Key Quantization
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. **Report bugs** via [GitHub Issues](https://github.com/LindezaBlue/V2M-Voice-to-Midi/issues)
+2. **Submit pull requests** for new features or fixes
+3. **Share feedback** and suggestions for improvement
+4. **Star this repo** if you find it useful!
+
+---
+
+## 📄 License
+
+This project is licensed under the  
+**Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**.  
+See the [LICENSE file](https://github.com/LindezaBlue/V2M-Voice-to-Midi?tab=License-1-ov-file) for full details.
+
+You are free to **use, modify, and share** this project, **but only for non-commercial purposes**, and you must **give proper credit** to the original author.  
+
+### If you remix or build upon this work, you must distribute your contributions under the **same license**!
+
+---
+
+## 💖 Support & Credits
+
+**Created by:** [LindezaBlue](https://github.com/LindezaBlue)
+
+
+If you find this tool helpful:
+- ⭐ **Star this repository**
+- 🐛 **Report issues** to help improve the tool
+- 📢 **Share** with others who might benefit
+
+---
