@@ -22,7 +22,8 @@ REQUIRED_PACKAGES = [
     ("midiutil",        "midiutil",         "1.2.1"),
     ("sounddevice",     "sounddevice",      "0.4.6"),
     ("torch",           "torch",            None),      # PyTorch — handled specially
-    ("crepe",           "crepe",            "0.0.12"),  # pitch detection neural net
+    ("tensorflow",      "tensorflow",       None),      # required by crepe
+    ("crepe",           "crepe",            "0.0.12"),  # neural pitch detector
     ("matplotlib",      "matplotlib",       "3.5.0"),
     ("plotly",          "plotly",           "5.0.0"),
     ("pillow",          "PIL",              "9.0.0"),
