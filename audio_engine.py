@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 import logging
 
+from pitch_correction import PitchCorrector
+from processing import ScaleQuantizer, NoteSmoother, VelocityShaper, ChordDetector
+from beatbox import BeatboxOnsetDetector, GM as DRUM_GM
+
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -164,7 +168,39 @@ class AudioEngine:
         self.latest_rms   : float = 0.0
         self.latest_freq  : float = 0.0
         self.latest_conf  : float = 0.0
-        self.note_history : list[NoteEvent] = []   # last 32 notes
+        self.latest_corrected_freq: float = 0.0
+        self.note_history : list[NoteEvent] = []   # last 64 notes
+
+        # Holds the last confirmed note for the piano roll display.
+        # Unlike latest_note (which gets cleared on note-off), this persists
+        # until a NEW note is sung — so the piano roll always shows something.
+        self.display_note : Optional[int] = None
+
+        # Waveform ring buffer — 0.5s of audio for the oscilloscope
+        self._waveform_len    = SAMPLE_RATE // 2   # 8000 samples @ 16kHz
+        self.waveform_buffer  = np.zeros(self._waveform_len, dtype=np.float32)
+        self._waveform_lock   = threading.Lock()
+
+        # Pitch history for the pitch curve overlay (parallel to waveform time)
+        self._pitch_history_len = 100
+        self.pitch_history      = []   # list of (timestamp, raw_hz, corrected_hz)
+
+        # Pitch corrector
+        self.pitch_corrector  = PitchCorrector()
+
+        # Processing chain
+        self.scale_quantizer  = ScaleQuantizer()
+        self.note_smoother    = NoteSmoother()
+        self.velocity_shaper  = VelocityShaper()
+        self.chord_detector   = ChordDetector()
+
+        # Beatbox / drums detector (used only in Drums / Perc mode)
+        self.beatbox_detector = BeatboxOnsetDetector()
+        self.latest_drum_hit  : Optional[tuple] = None  # (label, note, conf)
+
+        # Latest chord for UI
+        self.latest_chord     = None
+        self.chord_history    : list = []
 
         # MIDI output (optional)
         self._midi_out = None
@@ -204,7 +240,7 @@ class AudioEngine:
     # ── CREPE setup ───────────────────────────────────────────────────────────
 
     def load_model(self):
-        """Load CREPE model onto GPU if available."""
+        """Load CREPE neural pitch detector. Falls back to autocorrelation if unavailable."""
         try:
             import torch
             if torch.cuda.is_available():
@@ -217,19 +253,38 @@ class AudioEngine:
 
         try:
             import crepe
-            # Force CREPE to load its TF model
-            # Warmup with a silent buffer
+            # Silence TF Python-level warnings that slip past env vars
+            import logging as _logging
+            _logging.getLogger("tensorflow").setLevel(_logging.ERROR)
+            _logging.getLogger("absl").setLevel(_logging.ERROR)
+            try:
+                import tensorflow as tf
+                tf.get_logger().setLevel("ERROR")
+                tf.autograph.set_verbosity(0)
+            except Exception:
+                pass
+
             dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
             crepe.predict(dummy, SAMPLE_RATE, viterbi=True, verbose=0)
             self._crepe_model = crepe
-            logger.info("CREPE model loaded ✅")
+            print("  ✅ CREPE neural pitch detector loaded")
+        except ModuleNotFoundError:
+            print("  ⚠️  CREPE not installed — using autocorrelation fallback")
+            print("     (pitch detection will work but be less accurate)")
+            print("     To enable CREPE: pip install tensorflow crepe")
+            self._crepe_model = None
         except Exception as e:
-            logger.error(f"CREPE load failed: {e}")
+            print(f"  ⚠️  CREPE failed to load ({e.__class__.__name__}) — using autocorrelation fallback")
+            self._crepe_model = None
 
     # ── Audio callback ─────────────────────────────────────────────────────────
 
     def _audio_callback(self, indata, frames, time_info, status):
         mono = indata[:, 0].astype(np.float32) if indata.ndim > 1 else indata.astype(np.float32)
+        # Update waveform ring buffer (thread-safe swap)
+        with self._waveform_lock:
+            self.waveform_buffer = np.roll(self.waveform_buffer, -len(mono))
+            self.waveform_buffer[-len(mono):] = mono
         try:
             self._audio_q.put_nowait(mono)
         except queue.Full:
@@ -270,6 +325,7 @@ class AudioEngine:
                     self._fire_callbacks(evt)
                     self._current_event = None
                     self._last_note = None
+                    self.display_note = None   # clear piano roll on silence
                 continue
 
             # Pitch detection
@@ -277,35 +333,79 @@ class AudioEngine:
             self.latest_freq = freq
             self.latest_conf = conf
 
-            if freq <= 0 or conf < CONF_THRESH:
+            # Apply pitch correction
+            corrected_freq = self.pitch_corrector.process(freq)
+            self.latest_corrected_freq = corrected_freq
+
+            # Record to pitch history
+            now_t = time.time()
+            self.pitch_history.append((now_t, freq, corrected_freq))
+            if len(self.pitch_history) > self._pitch_history_len:
+                self.pitch_history.pop(0)
+
+            # ── Drums / Perc mode: use beatbox onset detector ─────────────
+            if self._mode == "Drums / Perc":
+                now_t2 = time.time()
+                hit = self.beatbox_detector.feed(chunk, now_t2)
+                if hit:
+                    label, drum_note, conf = hit
+                    self.latest_drum_hit = hit
+                    velocity = self.velocity_shaper.shape(r)
+                    self._send_note_on(drum_note, velocity, 9)   # ch 10 (0-indexed 9)
+                    # Brief note-off after 50ms (drums are short)
+                    def _note_off_delayed(n=drum_note):
+                        import time as _t; _t.sleep(0.05)
+                        self._send_note_off(n, 9)
+                    import threading as _th
+                    _th.Thread(target=_note_off_delayed, daemon=True).start()
+
+                    evt = NoteEvent(
+                        note=drum_note, frequency=0.0, confidence=conf,
+                        velocity=velocity, timestamp=now_t2, active=True
+                    )
+                    self.latest_note  = evt
+                    self.display_note = drum_note
+                    self.note_history.append(evt)
+                    if len(self.note_history) > 64:
+                        self.note_history.pop(0)
+                    self._fire_callbacks(evt)
+                continue   # skip normal pitch pipeline for drums
+
+            # ── Normal pitch pipeline (non-drum modes) ─────────────────────
+            if corrected_freq <= 0 or conf < CONF_THRESH:
                 continue
 
-            mode_cfg = MODES[self._mode]
-            raw_midi = freq_to_midi(freq)
-
-            # Apply octave shift
+            mode_cfg  = MODES[self._mode]
+            raw_midi  = freq_to_midi(corrected_freq)
             midi_note = max(0, min(127, raw_midi + mode_cfg["octave_shift"] * 12))
 
-            # Drum mode: remap by frequency
-            if self._mode == "Drums / Perc":
-                midi_note = map_drum_note(freq)
+            # ── Scale quantization ─────────────────────────────────────────
+            midi_note = self.scale_quantizer.quantize(midi_note)
 
-            velocity = int(min(127, max(30, r * 800)))
+            # ── Velocity shaping ───────────────────────────────────────────
+            velocity = self.velocity_shaper.shape(r)
 
-            # De-bounce: note must be stable for NOTE_HOLD_SEC
+            # ── Note smoothing / de-bounce ─────────────────────────────────
             now = time.time()
-            if midi_note != self._last_note:
-                self._last_note    = midi_note
-                self._note_start_t = now
+            if not self.note_smoother.should_emit(midi_note, now):
                 continue
 
-            if (now - self._note_start_t) < NOTE_HOLD_SEC:
-                continue
+            # ── Chord detection (runs in parallel, non-blocking) ──────────
+            chord_evt = self.chord_detector.detect(buf, SAMPLE_RATE)
+            if chord_evt:
+                self.latest_chord = chord_evt
+                self.chord_history.append(chord_evt)
+                if len(self.chord_history) > 32:
+                    self.chord_history.pop(0)
+                # Send chord notes to MIDI
+                if mode_cfg["midi_channel"] != 9:   # not drums
+                    for chord_note in chord_evt.notes:
+                        self._send_note_on(chord_note, velocity, mode_cfg["midi_channel"])
 
-            # Emit note if it changed
+            # ── Emit single note if changed ────────────────────────────────
             if self._current_event is None or self._current_event.note != midi_note:
-                # Send note off for previous
                 if self._current_event:
+                    self.note_smoother.note_off(self._current_event.note, now)
                     self._send_note_off(self._current_event.note, mode_cfg["midi_channel"])
 
                 evt = NoteEvent(
@@ -316,8 +416,9 @@ class AudioEngine:
                     timestamp=now,
                     active=True
                 )
-                self._current_event = evt
-                self.latest_note    = evt
+                self._current_event  = evt
+                self.latest_note     = evt
+                self.display_note    = midi_note   # update piano roll display
                 self.note_history.append(evt)
                 if len(self.note_history) > 64:
                     self.note_history.pop(0)
